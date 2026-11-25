@@ -51,33 +51,36 @@ final class Pages {
         @Override void build() {
             Context c = getContext();
             boolean running = LinuxEngine.isRunning();
+            boolean busy = LinuxEngine.installing || LinuxEngine.launching;
+            LinuxEngine.Distro selected = LinuxEngine.findDistro(running ? LinuxEngine.activeDistroId : LinuxEngine.selectedDistroId);
             File proot = LinuxEngine.prootBinary(c);
 
-            // Active session card
+            // Active / One-Click Launch hero card (Prism 26dp card)
             LinearLayout hero = cardBox(c);
             hero.setPadding(Ui.dp(20), Ui.dp(18), Ui.dp(20), Ui.dp(18));
 
             LinearLayout top = new LinearLayout(c);
             top.setGravity(Gravity.CENTER_VERTICAL);
-            top.addView(Ui.text(c, running ? LinuxEngine.findDistro(LinuxEngine.activeDistroId).name : "XFCE4 세션", 20, Ui.bold, Ui.text()),
+            top.addView(Ui.text(c, selected.name, 20, Ui.bold, Ui.text()),
                     new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            int badgeCol = running ? 0xFF19B36B : Ui.ACCENT;
-            top.addView(Widgets.pillBadge(c, running ? "실행 중" : "대기", Ui.alpha(badgeCol, Ui.dark ? 0.28f : 0.14f), badgeCol));
+            int badgeCol = running ? 0xFF19B36B : (busy ? 0xFFF59E0B : Ui.ACCENT);
+            String badgeText = running ? "실행 중" : (busy ? "준비 중" : (LinuxEngine.isInstalled(c, selected.id) ? "설치됨" : "원클릭"));
+            top.addView(Widgets.pillBadge(c, badgeText, Ui.alpha(badgeCol, Ui.dark ? 0.28f : 0.14f), badgeCol));
             hero.addView(top, Widgets.MW);
 
-            String detail = LinuxEngine.resolution + " · VNC :" + (LinuxEngine.vncPort - 5900)
-                    + " · PRoot " + (proot != null ? "사용 가능" : "미설치");
-            TextView sub = Ui.text(c, detail, 13, Ui.regular, Ui.text2());
+            String detail = LinuxEngine.resolutionLabel(c) + " · DPI " + LinuxEngine.dpiScale
+                    + " · PRoot " + (proot != null ? "내장됨" : "대기");
+            TextView sub = Ui.text(c, detail, 12.5f, Ui.regular, Ui.text2());
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             slp.topMargin = Ui.dp(4);
             hero.addView(sub, slp);
 
-            if (LinuxEngine.installing) {
+            if (busy) {
                 TextView st = Ui.text(c, LinuxEngine.installStatus + " (" + LinuxEngine.installProgress + "%)", 13, Ui.semibold, Ui.ACCENT);
                 LinearLayout.LayoutParams islp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 islp.topMargin = Ui.dp(12);
                 hero.addView(st, islp);
-                final float frac = LinuxEngine.installProgress / 100f;
+                final float frac = Math.max(0.05f, LinuxEngine.installProgress / 100f);
                 View pb = new View(c) {
                     final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
                     @Override protected void onDraw(Canvas cv) {
@@ -98,26 +101,34 @@ final class Pages {
             LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             blp.topMargin = Ui.dp(14);
 
-            TextView primary = Widgets.button(c, running ? "화면 열기" : "데스크탑 시작", true, v -> {
+            TextView primary = Widgets.button(c, running ? "화면 열기" : "원클릭 시작", true, v -> {
                 if (running) {
-                    main.openVnc("로컬 리눅스", "127.0.0.1", LinuxEngine.vncPort, "");
+                    main.openVnc(selected.name, "127.0.0.1", LinuxEngine.vncPort, "");
                 } else {
-                    LinuxEngine.Distro d = LinuxEngine.DISTROS[0];
-                    if (!LinuxEngine.isInstalled(c, d.id)) {
-                        LinuxEngine.installDistro(c, d);
-                        Toast.makeText(c, d.name + " 설치 시작", Toast.LENGTH_SHORT).show();
-                    } else {
-                        LinuxEngine.startDesktop(c, d);
-                    }
+                    Toast.makeText(c, selected.name + " 원클릭 실행 시작", Toast.LENGTH_SHORT).show();
+                    LinuxEngine.oneClickLaunch(c, selected, () -> main.openVnc(selected.name, "127.0.0.1", LinuxEngine.vncPort, ""));
                 }
             });
             LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             p1.rightMargin = Ui.dp(8);
             btns.addView(primary, p1);
 
-            TextView secondary = Widgets.button(c, running ? "중지" : "VNC 연결", false, v -> {
-                if (running) LinuxEngine.stopDesktop(c);
-                else main.openVnc("로컬 리눅스", "127.0.0.1", LinuxEngine.vncPort, "");
+            TextView secondary = Widgets.button(c, running ? "중지" : "배포판 변경", false, v -> {
+                if (running) {
+                    LinuxEngine.stopDesktop(c);
+                } else {
+                    String[] names = new String[LinuxEngine.DISTROS.length];
+                    int curIdx = 0;
+                    for (int i = 0; i < LinuxEngine.DISTROS.length; i++) {
+                        names[i] = LinuxEngine.DISTROS[i].name + " (" + LinuxEngine.DISTROS[i].pkgMgr + ")";
+                        if (LinuxEngine.DISTROS[i].id.equals(selected.id)) curIdx = i;
+                    }
+                    Widgets.pickSheet(main, v, "기본 배포판 선택", names, curIdx, idx -> {
+                        LinuxEngine.selectedDistroId = LinuxEngine.DISTROS[idx].id;
+                        LinuxEngine.saveProfiles(main);
+                        rebuild();
+                    });
+                }
             });
             btns.addView(secondary, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             hero.addView(btns, blp);
@@ -170,13 +181,21 @@ final class Pages {
                 row.addView(del, dlp);
             }
 
-            TextView act = Widgets.button(c, active ? "열기" : (installed ? "시작" : "설치"), !installed || active, v -> {
-                if (active) main.openVnc(d.name, "127.0.0.1", LinuxEngine.vncPort, "");
-                else if (installed) LinuxEngine.startDesktop(c, d);
-                else LinuxEngine.installDistro(c, d);
+            TextView act = Widgets.button(c, active ? "열기" : (installed ? "실행" : "원클릭"), !installed || active, v -> {
+                if (active) {
+                    main.openVnc(d.name, "127.0.0.1", LinuxEngine.vncPort, "");
+                } else {
+                    Toast.makeText(c, d.name + " 원클릭 실행", Toast.LENGTH_SHORT).show();
+                    LinuxEngine.oneClickLaunch(c, d, () -> main.openVnc(d.name, "127.0.0.1", LinuxEngine.vncPort, ""));
+                }
             });
             act.setPadding(Ui.dp(16), Ui.dp(8), Ui.dp(16), Ui.dp(8));
             row.addView(act);
+            card.setOnClickListener(v -> {
+                LinuxEngine.selectedDistroId = d.id;
+                LinuxEngine.saveProfiles(main);
+                rebuild();
+            });
             card.addView(row, Widgets.MW);
             return card;
         }

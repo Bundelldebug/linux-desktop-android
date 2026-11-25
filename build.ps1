@@ -67,6 +67,14 @@ try {
     Get-ChildItem -Filter "*.dex" "$BuildDir\dex" | ForEach-Object {
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Zip, $_.FullName, $_.Name, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
     }
+    $JniRoot = Join-Path $AppDir "jniLibs"
+    if (Test-Path $JniRoot) {
+        Get-ChildItem -Recurse -File $JniRoot | ForEach-Object {
+            $rel = $_.FullName.Substring($JniRoot.Length + 1).Replace('\', '/')
+            $entryName = "lib/$rel"
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Zip, $_.FullName, $entryName, [System.IO.Compression.CompressionLevel]::NoCompression) | Out-Null
+        }
+    }
 } finally { $Zip.Dispose() }
 $AlignedApk = Join-Path $BuildDir "aligned.apk"
 & $ZipAlign -f -P 16 4 $UnsignedApk $AlignedApk

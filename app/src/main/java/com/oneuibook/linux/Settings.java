@@ -21,14 +21,27 @@ final class Settings {
             SharedPreferences p = MainActivity.prefs(c);
 
             Widgets.Group gDesk = new Widgets.Group(c, "데스크탑 환경");
-            String[] ress = {"1280x720 (HD)", "1600x900 (HD+)", "1920x1080 (FHD)", "2560x1600 (태블릿)"};
-            String[] resVals = {"1280x720", "1600x900", "1920x1080", "2560x1600"};
+            String autoLabel = "기기 해상도 맞춤 (" + LinuxEngine.resolveGeometry(c) + ")";
+            String[] ress = {autoLabel, "1280x720 (HD)", "1600x900 (HD+)", "1920x1080 (FHD)", "2560x1600 (태블릿)"};
+            String[] resVals = {"auto", "1280x720", "1600x900", "1920x1080", "2560x1600"};
             int rIdx = 0;
             for (int i = 0; i < resVals.length; i++) if (resVals[i].equals(LinuxEngine.resolution)) rIdx = i;
             final int frIdx = rIdx;
-            gDesk.row(Icons.MONITOR, Ui.ACCENT, "기본 해상도", LinuxEngine.resolution, true, v ->
-                    Widgets.pickSheet(main, v, "기본 해상도", ress, frIdx, idx -> {
+            gDesk.row(Icons.MONITOR, Ui.ACCENT, "화면 해상도", LinuxEngine.resolutionLabel(c), true, v ->
+                    Widgets.pickSheet(main, v, "화면 해상도", ress, frIdx, idx -> {
                         LinuxEngine.resolution = resVals[idx];
+                        LinuxEngine.saveProfiles(main);
+                        rebuild();
+                    }));
+
+            String[] dpis = {"96 DPI (작게)", "120 DPI (기본)", "144 DPI (크게)", "168 DPI (고해상도)"};
+            int[] dpiVals = {96, 120, 144, 168};
+            int dIdx = 1;
+            for (int i = 0; i < dpiVals.length; i++) if (dpiVals[i] == LinuxEngine.dpiScale) dIdx = i;
+            final int fdIdx = dIdx;
+            gDesk.row(Icons.APPEARANCE, 0xFF6366F1, "화면 배율 (DPI)", LinuxEngine.dpiScale + " DPI", true, v ->
+                    Widgets.pickSheet(main, v, "화면 배율 (DPI)", dpis, fdIdx, idx -> {
+                        LinuxEngine.dpiScale = dpiVals[idx];
                         LinuxEngine.saveProfiles(main);
                         rebuild();
                     }));
@@ -44,7 +57,7 @@ final class Settings {
             gDesk.addCustom(tpRow);
             content.addView(gDesk, Widgets.MW);
 
-            Widgets.Group gApp = new Widgets.Group(c, "화면 및 글래스");
+            Widgets.Group gApp = new Widgets.Group(c, "프리즘 스타일 및 글래스");
             String[] themes = {"시스템 설정", "라이트", "다크"};
             String[] themeKeys = {"system", "light", "dark"};
             String curTheme = p.getString("theme", "system");
@@ -60,6 +73,20 @@ final class Settings {
             gApp.row(Icons.INFO, 0xFF14B8A6, "글래스 스타일", styles[stIdx], true, v ->
                     Widgets.pickSheet(main, v, "글래스 스타일", styles, stIdx, idx -> {
                         p.edit().putString("ui_style", idx == 1 ? "oneui" : "prism").apply();
+                        Ui.init(main, p);
+                        main.refreshAppearance();
+                    }));
+            String[] accentNames = new String[Ui.ACCENT_LABELS.length];
+            int aIdx = 0;
+            String curAcc = p.getString("accent_color", "blue");
+            for (int i = 0; i < Ui.ACCENT_LABELS.length; i++) {
+                accentNames[i] = c.getString(Ui.ACCENT_LABELS[i]);
+                if (Ui.ACCENT_KEYS[i].equals(curAcc)) aIdx = i;
+            }
+            final int faIdx = aIdx;
+            gApp.row(Icons.APPEARANCE, Ui.ACCENT, "강조 색상", accentNames[faIdx], true, v ->
+                    Widgets.pickSheet(main, v, "강조 색상", accentNames, faIdx, idx -> {
+                        p.edit().putString("accent_color", Ui.ACCENT_KEYS[idx]).apply();
                         Ui.init(main, p);
                         main.refreshAppearance();
                     }));

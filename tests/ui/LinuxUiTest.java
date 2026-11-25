@@ -80,6 +80,10 @@ public class LinuxUiTest {
         List<String> args = LinuxEngine.buildProotArgs(ctx, new File("/bin/proot"), dest, "uname -a");
         assertTrue(args.contains("--link2symlink"));
         assertTrue(args.contains("uname -a"));
+        LinuxEngine.resolution = "auto";
+        String autoGeom = LinuxEngine.resolveGeometry(ctx);
+        assertTrue(autoGeom.matches("\\d+x\\d+"));
+        assertEquals("9.5.2", MainActivity.VERSION);
     }
 
     @Test public void rfb38VncLoopbackAndAuth() throws Exception {
@@ -176,7 +180,7 @@ public class LinuxUiTest {
     public void tabletSidebar() throws Exception {
         ActivityController<MainActivity> ctrl = Robolectric.buildActivity(MainActivity.class).setup();
         MainActivity act = ctrl.get();
-        assertEquals("9.5.1", MainActivity.VERSION);
+        assertEquals("9.5.2", MainActivity.VERSION);
         assertEquals(10, LinuxEngine.DISTROS.length);
         assertEquals(0xFFBE, DesktopActivity.mapKeySym(android.view.KeyEvent.KEYCODE_F1, new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_F1)));
         assertEquals('c', DesktopActivity.mapKeySym(android.view.KeyEvent.KEYCODE_C, new android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_C, 0, android.view.KeyEvent.META_CTRL_ON)));
