@@ -272,16 +272,26 @@ final class LinuxEngine {
         if (nat != null) {
             File tallocSrc = new File(nat, "libtalloc.so");
             File tallocLink = new File(libDir, "libtalloc.so.2");
-            if (tallocSrc.exists() && !Files.exists(tallocLink.toPath())) {
+            if (tallocSrc.exists()) {
+                boolean needLink = true;
                 try {
-                    Files.deleteIfExists(tallocLink.toPath());
-                    Files.createSymbolicLink(tallocLink.toPath(), tallocSrc.toPath());
-                } catch (Throwable ignored) {
-                    try (InputStream is = new FileInputStream(tallocSrc);
-                         FileOutputStream fos = new FileOutputStream(tallocLink)) {
-                        byte[] buf = new byte[16384]; int n;
-                        while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
-                    } catch (Throwable ignored2) {}
+                    if (Files.isSymbolicLink(tallocLink.toPath())
+                            && Files.readSymbolicLink(tallocLink.toPath()).equals(tallocSrc.toPath())
+                            && Files.exists(tallocLink.toPath())) {
+                        needLink = false;
+                    }
+                } catch (Throwable ignored) {}
+                if (needLink) {
+                    try {
+                        Files.deleteIfExists(tallocLink.toPath());
+                        Files.createSymbolicLink(tallocLink.toPath(), tallocSrc.toPath());
+                    } catch (Throwable ignored) {
+                        try (InputStream is = new FileInputStream(tallocSrc);
+                             FileOutputStream fos = new FileOutputStream(tallocLink)) {
+                            byte[] buf = new byte[16384]; int n;
+                            while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
+                        } catch (Throwable ignored2) {}
+                    }
                 }
             }
             File loader = new File(nat, "libproot-loader.so");
@@ -359,7 +369,9 @@ final class LinuxEngine {
                     lastError = "";
                     log(">>> VNC 서버 연결 준비 완료 (127.0.0.1:" + vncPort + ")");
                     notifyChanged();
-                    if (onVncReady != null) MAIN.post(onVncReady);
+                    if (onVncReady != null) MAIN.post(() -> {
+                        try { onVncReady.run(); } catch (Throwable t) { log("[오류] 화면 열기 실패: " + t.getMessage()); }
+                    });
                 } else if (isRunning()) {
                     installStatus = "XFCE4 패키지 설치 진행 중 (터미널 탭에서 진행 확인 가능)";
                     log("[안내] 최초 실행 시 XFCE4 설치에 1~4분 걸릴 수 있습니다. 완료 후 '화면 열기'를 누르세요.");
@@ -410,7 +422,7 @@ final class LinuxEngine {
             conn.setInstanceFollowRedirects(false);
             conn.setConnectTimeout(20_000);
             conn.setReadTimeout(60_000);
-            conn.setRequestProperty("User-Agent", "LinuxDesktop/9.5.3 (Android; aarch64)");
+            conn.setRequestProperty("User-Agent", "LinuxDesktop/9.5.4 (Android; aarch64)");
             conn.setRequestProperty("Accept", "*/*");
             conn.setRequestProperty("Accept-Encoding", "identity");
             int code = conn.getResponseCode();
@@ -777,7 +789,9 @@ final class LinuxEngine {
         args.add("-b"); args.add("/sys");
         args.add("-b"); args.add(c.getCacheDir().getAbsolutePath() + ":/tmp");
         args.add("-w"); args.add("/root");
-        args.add("/usr/bin/env");
+        boolean hasUsrEnv = Files.exists(new File(rootfs, "usr/bin/env").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        boolean hasBinEnv = Files.exists(new File(rootfs, "bin/env").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        args.add((hasBinEnv && !hasUsrEnv) ? "/bin/env" : "/usr/bin/env");
         args.add("-i");
         args.add("HOME=/root");
         args.add("TERM=xterm-256color");
@@ -813,20 +827,23 @@ final class LinuxEngine {
             pb.redirectErrorStream(true);
             String geom = resolveGeometry(c);
             log(">>> PRoot 데스크탑 시작: " + d.name + " (" + geom + ", DPI " + dpiScale + ", VNC :" + (vncPort - 5900) + ")");
-            runningProc = pb.start();
+            final Process proc = pb.start();
+            runningProc = proc;
             EXEC.execute(() -> {
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(runningProc.getInputStream(), StandardCharsets.UTF_8))) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = br.readLine()) != null) log(line);
                 } catch (Throwable ignored) {}
                 try {
-                    int exit = runningProc != null ? runningProc.waitFor() : 0;
+                    int exit = proc.waitFor();
                     log("<<< 리눅스 세션 종료 (exit=" + exit + ")");
                 } catch (Throwable ignored) {}
-                runningProc = null;
-                activeDistroId = null;
-                LinuxService.stop(c);
-                notifyChanged();
+                if (runningProc == proc) {
+                    runningProc = null;
+                    activeDistroId = null;
+                    LinuxService.stop(c);
+                    notifyChanged();
+                }
             });
             return true;
         } catch (Throwable t) {
