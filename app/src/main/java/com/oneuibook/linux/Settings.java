@@ -57,7 +57,7 @@ final class Settings {
             gDesk.addCustom(tpRow);
             content.addView(gDesk, Widgets.MW);
 
-            Widgets.Group gApp = new Widgets.Group(c, "프리즘 스타일 및 글래스");
+            Widgets.Group gApp = new Widgets.Group(c, "화면 스타일 및 글래스");
             String[] themes = {"시스템 설정", "라이트", "다크"};
             String[] themeKeys = {"system", "light", "dark"};
             String curTheme = p.getString("theme", "system");
@@ -68,7 +68,7 @@ final class Settings {
                         Ui.init(main, p);
                         main.refreshAppearance();
                     }));
-            String[] styles = {"프리즘 글래스 (A)", "One UI 블러 (G)"};
+            String[] styles = {"A 스타일 (글래스)", "G 스타일 (블러)"};
             int stIdx = Ui.gStyle ? 1 : 0;
             gApp.row(Icons.INFO, 0xFF14B8A6, "글래스 스타일", styles[stIdx], true, v ->
                     Widgets.pickSheet(main, v, "글래스 스타일", styles, stIdx, idx -> {

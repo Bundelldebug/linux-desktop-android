@@ -19,9 +19,9 @@ import android.widget.FrameLayout;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One UI Book 리눅스 데스크탑 — 루팅·언락 없는 PRoot 리눅스 컨테이너 + 내장 VNC 뷰어. */
+/** 리눅스 데스크탑 — 루팅·언락 없는 PRoot 리눅스 컨테이너 + 내장 VNC 뷰어. */
 public final class MainActivity extends Activity implements Dock.Listener, Header.Listener, LinuxEngine.Listener {
-    static final String VERSION = "9.5.2";
+    static final String VERSION = "9.5.3";
 
     FrameLayout root;
     Glass.Backdrop backdrop;

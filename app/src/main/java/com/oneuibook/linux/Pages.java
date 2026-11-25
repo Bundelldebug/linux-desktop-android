@@ -94,6 +94,26 @@ final class Pages {
                 LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(6));
                 pblp.topMargin = Ui.dp(6);
                 hero.addView(pb, pblp);
+            } else if (LinuxEngine.lastError != null && !LinuxEngine.lastError.isEmpty()) {
+                LinearLayout errBox = new LinearLayout(c);
+                errBox.setOrientation(LinearLayout.HORIZONTAL);
+                errBox.setGravity(Gravity.CENTER_VERTICAL);
+                errBox.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+                errBox.setBackground(Ui.round(Ui.alpha(0xFFE5484D, Ui.dark ? 0.22f : 0.12f), 14));
+                TextView errTv = Ui.text(c, LinuxEngine.lastError, 12.5f, Ui.semibold, 0xFFE5484D);
+                errTv.setSingleLine(false);
+                errTv.setEllipsize(null);
+                errBox.addView(errTv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                TextView logBtn = Ui.text(c, "로그", 12f, Ui.bold, 0xFFFFFFFF);
+                logBtn.setPadding(Ui.dp(10), Ui.dp(6), Ui.dp(10), Ui.dp(6));
+                logBtn.setBackground(Ui.round(0xFFE5484D, 100));
+                logBtn.setOnClickListener(v -> { main.dock.select(1, true); main.onTab(1, false); });
+                LinearLayout.LayoutParams lblp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lblp.leftMargin = Ui.dp(8);
+                errBox.addView(logBtn, lblp);
+                LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                elp.topMargin = Ui.dp(12);
+                hero.addView(errBox, elp);
             }
 
             LinearLayout btns = new LinearLayout(c);

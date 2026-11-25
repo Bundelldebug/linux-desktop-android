@@ -75,7 +75,14 @@ public class LinuxUiTest {
         int n = LinuxEngine.extractTarGz(tarGz, dest);
         assertEquals(1, n);
         assertTrue(new File(dest, "etc/os-release").exists());
-        LinuxEngine.provisionContainer(dest, LinuxEngine.DISTROS[0]);
+        // Simulate Ubuntu/Debian dangling /etc/resolv.conf symlink before provisioning
+        File resolv = new File(dest, "etc/resolv.conf");
+        try {
+            java.nio.file.Files.deleteIfExists(resolv.toPath());
+            java.nio.file.Files.createSymbolicLink(resolv.toPath(), new File("/run/systemd/resolve/stub-resolv.conf").toPath());
+        } catch (Throwable ignored) {}
+        LinuxEngine.provisionContainer(dest, LinuxEngine.DISTROS[1]);
+        assertTrue(new File(dest, "etc/resolv.conf").exists());
         assertTrue(new File(dest, "root/start-desktop.sh").exists());
         List<String> args = LinuxEngine.buildProotArgs(ctx, new File("/bin/proot"), dest, "uname -a");
         assertTrue(args.contains("--link2symlink"));
@@ -83,7 +90,7 @@ public class LinuxUiTest {
         LinuxEngine.resolution = "auto";
         String autoGeom = LinuxEngine.resolveGeometry(ctx);
         assertTrue(autoGeom.matches("\\d+x\\d+"));
-        assertEquals("9.5.2", MainActivity.VERSION);
+        assertEquals("9.5.3", MainActivity.VERSION);
     }
 
     @Test public void rfb38VncLoopbackAndAuth() throws Exception {
@@ -180,7 +187,7 @@ public class LinuxUiTest {
     public void tabletSidebar() throws Exception {
         ActivityController<MainActivity> ctrl = Robolectric.buildActivity(MainActivity.class).setup();
         MainActivity act = ctrl.get();
-        assertEquals("9.5.2", MainActivity.VERSION);
+        assertEquals("9.5.3", MainActivity.VERSION);
         assertEquals(10, LinuxEngine.DISTROS.length);
         assertEquals(0xFFBE, DesktopActivity.mapKeySym(android.view.KeyEvent.KEYCODE_F1, new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_F1)));
         assertEquals('c', DesktopActivity.mapKeySym(android.view.KeyEvent.KEYCODE_C, new android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_C, 0, android.view.KeyEvent.META_CTRL_ON)));
