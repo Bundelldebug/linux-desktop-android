@@ -84,10 +84,12 @@ final class VncClient {
                 out.flush();
                 fbW = in.readUnsignedShort();
                 fbH = in.readUnsignedShort();
-                in.skipBytes(16); // server pixel format
+                skipExact(in, 16); // server pixel format
                 int nameLen = in.readInt();
-                byte[] nameBytes = new byte[Math.max(0, Math.min(nameLen, 4096))];
+                int readLen = Math.max(0, Math.min(nameLen, 4096));
+                byte[] nameBytes = new byte[readLen];
                 in.readFully(nameBytes);
+                if (nameLen > readLen) skipExact(in, nameLen - readLen);
                 String desktopName = new String(nameBytes, StandardCharsets.UTF_8);
 
                 allocFb(fbW, fbH);
@@ -114,21 +116,22 @@ final class VncClient {
                             else throw new RuntimeException("지원하지 않는 인코딩: " + enc);
                         }
                         if (fb != null) {
-                            fb.setPixels(pixels, 0, fbW, 0, 0, fbW, fbH);
-                            cb.onFrameUpdated(fb);
+                            Bitmap snap = Bitmap.createBitmap(pixels, fbW, fbH, Bitmap.Config.ARGB_8888);
+                            fb = snap;
+                            cb.onFrameUpdated(snap);
                         }
                         requestUpdate(true);
                     } else if (msg == 1) { // SetColourMapEntries
                         in.readUnsignedByte();
                         in.readUnsignedShort();
                         int n = in.readUnsignedShort();
-                        in.skipBytes(n * 6);
+                        skipExact(in, n * 6L);
                     } else if (msg == 2) { // Bell
                         // ignore
                     } else if (msg == 3) { // ServerCutText
-                        in.skipBytes(3);
-                        int len = in.readInt();
-                        if (len > 0 && len < 1_000_000) in.skipBytes(len);
+                        skipExact(in, 3);
+                        long len = in.readInt() & 0xFFFFFFFFL;
+                        if (len > 0) skipExact(in, len);
                     }
                 }
             } catch (Throwable e) {
@@ -221,11 +224,23 @@ final class VncClient {
         } catch (Exception ignored) {}
     }
 
+    private final java.util.concurrent.ExecutorService sendExec = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    private static void skipExact(DataInputStream in, long n) throws Exception {
+        byte[] dump = new byte[4096];
+        long rem = n;
+        while (rem > 0) {
+            int want = (int) Math.min(dump.length, rem);
+            in.readFully(dump, 0, want);
+            rem -= want;
+        }
+    }
+
     void sendPointer(int x, int y, int mask) {
         if (!running || out == null) return;
         int cx = Math.max(0, Math.min(fbW - 1, x));
         int cy = Math.max(0, Math.min(fbH - 1, y));
-        LinuxEngine.EXEC.execute(() -> {
+        sendExec.execute(() -> {
             try {
                 synchronized (writeLock) {
                     out.writeByte(5); // PointerEvent
@@ -240,7 +255,7 @@ final class VncClient {
 
     void sendKey(int keysym, boolean down) {
         if (!running || out == null) return;
-        LinuxEngine.EXEC.execute(() -> {
+        sendExec.execute(() -> {
             try {
                 synchronized (writeLock) {
                     out.writeByte(4); // KeyEvent
@@ -257,7 +272,7 @@ final class VncClient {
     void sendCutText(String text) {
         if (!running || out == null || text == null || text.isEmpty()) return;
         byte[] bytes = text.getBytes(StandardCharsets.ISO_8859_1);
-        LinuxEngine.EXEC.execute(() -> {
+        sendExec.execute(() -> {
             try {
                 synchronized (writeLock) {
                     out.writeByte(6);
@@ -272,6 +287,7 @@ final class VncClient {
 
     void close() {
         running = false;
+        sendExec.shutdownNow();
         try { if (socket != null) socket.close(); } catch (Exception ignored) {}
     }
 

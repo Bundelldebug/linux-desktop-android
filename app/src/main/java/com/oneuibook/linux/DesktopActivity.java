@@ -86,9 +86,22 @@ public final class DesktopActivity extends Activity {
         bar.addView(actionChip("우클릭", v -> canvasView.rightClick()));
         bar.addView(actionChip("종료", v -> finish()));
 
+        android.widget.HorizontalScrollView barScroll = new android.widget.HorizontalScrollView(this);
+        barScroll.setHorizontalScrollBarEnabled(false);
+        barScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        barScroll.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        blp.leftMargin = Ui.dp(8);
+        blp.rightMargin = Ui.dp(8);
         blp.bottomMargin = Ui.dp(18);
-        root.addView(bar, blp);
+        root.addView(barScroll, blp);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int bot = Math.max(insets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()).bottom,
+                    insets.getInsets(WindowInsets.Type.ime()).bottom);
+            blp.bottomMargin = bot + Ui.dp(12);
+            barScroll.setLayoutParams(blp);
+            return insets;
+        });
         setContentView(root);
         WindowInsetsController ctrl = w.getInsetsController();
         if (ctrl != null) {
@@ -243,6 +256,35 @@ public final class DesktopActivity extends Activity {
             super(c);
             setFocusable(true);
             setFocusableInTouchMode(true);
+        }
+
+        @Override public boolean onCheckIsTextEditor() { return true; }
+
+        @Override public android.view.inputmethod.InputConnection onCreateInputConnection(android.view.inputmethod.EditorInfo outAttrs) {
+            outAttrs.inputType = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            outAttrs.imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            return new android.view.inputmethod.BaseInputConnection(this, false) {
+                @Override public boolean commitText(CharSequence text, int newCursorPosition) {
+                    if (client != null && text != null) {
+                        for (int i = 0; i < text.length(); i++) {
+                            int cp = text.charAt(i);
+                            int sym = (cp >= 0x20 && cp <= 0x7E) ? cp : (0x01000000 | cp);
+                            client.sendKey(sym, true);
+                            client.sendKey(sym, false);
+                        }
+                    }
+                    return true;
+                }
+                @Override public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+                    if (client != null && beforeLength > 0) {
+                        for (int i = 0; i < beforeLength; i++) {
+                            client.sendKey(0xFF08, true);
+                            client.sendKey(0xFF08, false);
+                        }
+                    }
+                    return true;
+                }
+            };
         }
 
         void setDesktopSize(int w, int h) { deskW = Math.max(1, w); deskH = Math.max(1, h); cursorX = deskW / 2f; cursorY = deskH / 2f; invalidate(); }

@@ -34,8 +34,20 @@ public final class LinuxService extends Service {
         try {
             String label = intent != null && intent.getStringExtra("label") != null
                     ? intent.getStringExtra("label") : "리눅스 데스크탑";
-            if (intent != null && "STOP".equals(intent.getAction())) {
-                LinuxEngine.stopDesktop(this);
+            if ((intent != null && "STOP".equals(intent.getAction()))
+                    || (!LinuxEngine.isRunning() && !LinuxEngine.launching)) {
+                if (intent != null && "STOP".equals(intent.getAction())) LinuxEngine.stopDesktop(this);
+                NotificationManager nm0 = getSystemService(NotificationManager.class);
+                if (nm0 != null && nm0.getNotificationChannel(CHANNEL) == null) {
+                    nm0.createNotificationChannel(new NotificationChannel(CHANNEL, getString(R.string.channel_session), NotificationManager.IMPORTANCE_LOW));
+                }
+                Notification tmp = new Notification.Builder(this, CHANNEL)
+                        .setSmallIcon(R.drawable.ic_stat_linux)
+                        .setContentTitle("리눅스 데스크탑 종료 중")
+                        .build();
+                if (Build.VERSION.SDK_INT >= 34) startForeground(101, tmp, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                else startForeground(101, tmp);
+                stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelf();
                 return START_NOT_STICKY;
             }
@@ -67,7 +79,7 @@ public final class LinuxService extends Service {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "oneuibook:linux");
                 wakeLock.acquire(4 * 60 * 60 * 1000L);
             }
-            return START_STICKY;
+            return START_NOT_STICKY;
         } catch (Throwable t) {
             LinuxEngine.log("[안내] 포그라운드 서비스 제한으로 일반 모드로 계속 실행: " + t.getMessage());
             try { stopSelf(); } catch (Throwable ignored) {}

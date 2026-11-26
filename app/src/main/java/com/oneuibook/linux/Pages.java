@@ -183,7 +183,7 @@ final class Pages {
             nameRow.addView(Ui.text(c, d.name, 16, Ui.bold, Ui.text()));
             nameRow.addView(Widgets.pillBadge(c, d.pkgMgr, Ui.alpha(d.color, Ui.dark ? 0.3f : 0.14f), d.color));
             info.addView(nameRow);
-            String status = active ? "실행 중" : (installed ? "설치됨 · " + Ui.size(LinuxEngine.dirSizeBytes(LinuxEngine.rootfsDir(c, d.id))) : d.summary + " · " + d.sizeMb + " MB");
+            String status = active ? "실행 중" : (installed ? "설치됨 · " + Ui.size(LinuxEngine.cachedDistroSize(c, d.id)) : d.summary + " · " + d.sizeMb + " MB");
             TextView sum = Ui.text(c, status, 12.5f, Ui.regular, installed ? 0xFF19B36B : Ui.text2());
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             slp.topMargin = Ui.dp(3);
@@ -195,7 +195,10 @@ final class Pages {
                 del.setSingleLine(false); del.setEllipsize(null);
                 del.setPadding(Ui.dp(12), Ui.dp(8), Ui.dp(12), Ui.dp(8));
                 del.setBackground(Ui.round(Ui.alpha(0xFFE5484D, Ui.dark ? 0.22f : 0.12f), 100));
-                del.setOnClickListener(v -> LinuxEngine.removeDistro(c, d));
+                del.setOnClickListener(v -> {
+                    Toast.makeText(c, d.name + " 삭제 중...", Toast.LENGTH_SHORT).show();
+                    LinuxEngine.removeDistroAsync(c, d);
+                });
                 LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 dlp.rightMargin = Ui.dp(6);
                 row.addView(del, dlp);
@@ -223,10 +226,17 @@ final class Pages {
 
     // ---- 2. Terminal Page ----
     static final class TerminalPage extends Page {
+        private TextView logOut;
+
         TerminalPage(MainActivity m) {
             super(m, m.getString(R.string.tab_terminal), true);
             setGrouped(true);
             headerIcons = new int[]{Icons.REFRESH};
+        }
+
+        void updateLogOnly() {
+            if (logOut != null) logOut.setText(LinuxEngine.getLog());
+            else rebuild();
         }
 
         @Override void build() {
@@ -235,6 +245,7 @@ final class Pages {
             console.setBackground(Ui.round(0xFF0E1320, Ui.cardRadius()));
             console.setPadding(Ui.dp(16), Ui.dp(16), Ui.dp(16), Ui.dp(16));
             TextView out = new TextView(c);
+            logOut = out;
             out.setText(LinuxEngine.getLog());
             out.setTypeface(Typeface.MONOSPACE);
             out.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12.5f);
@@ -318,7 +329,12 @@ final class Pages {
             Widgets.Group g = new Widgets.Group(c, "배포판 및 연결");
             for (LinuxEngine.Distro d : LinuxEngine.DISTROS) {
                 if (q.isEmpty() || d.name.toLowerCase(Locale.ROOT).contains(q) || d.summary.toLowerCase(Locale.ROOT).contains(q)) {
-                    g.row(Icons.CPU, d.color, d.name, d.pkgMgr, true, v -> main.onTab(0, false));
+                    g.row(Icons.CPU, d.color, d.name, d.pkgMgr, true, v -> {
+                        LinuxEngine.selectedDistroId = d.id;
+                        LinuxEngine.saveProfiles(main);
+                        main.dock.select(0, true);
+                        main.onTab(0, false);
+                    });
                 }
             }
             for (LinuxEngine.VncProfile p : LinuxEngine.profiles) {

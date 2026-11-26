@@ -21,7 +21,7 @@ import java.util.List;
 
 /** 리눅스 데스크탑 — 루팅·언락 없는 PRoot 리눅스 컨테이너 + 내장 VNC 뷰어. */
 public final class MainActivity extends Activity implements Dock.Listener, Header.Listener, LinuxEngine.Listener {
-    static final String VERSION = "9.5.6";
+    static final String VERSION = "9.5.7";
 
     FrameLayout root;
     Glass.Backdrop backdrop;
@@ -74,6 +74,7 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
             android.graphics.Insets sys = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             int ime = insets.getInsets(WindowInsets.Type.ime()).bottom;
             boolean changed = sys.top != Ui.statusInset || sys.bottom != Ui.navInset;
+            boolean imeChanged = ime != Ui.imeInset;
             Ui.statusInset = sys.top; Ui.navInset = sys.bottom;
             Ui.cutoutLeft = sys.left; Ui.cutoutRight = sys.right; Ui.imeInset = ime;
             dock.setImeOffset(ime);
@@ -81,6 +82,12 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
             if (changed) {
                 for (NavStack s : tabs) if (s != null) s.applyInsets();
                 if (searchPage != null) searchPage.applyInsets();
+            }
+            if (imeChanged || changed) {
+                for (int i = 0; i < root.getChildCount(); i++) {
+                    View ch = root.getChildAt(i);
+                    if (ch instanceof GlassMenu) ch.requestLayout();
+                }
             }
             return WindowInsets.CONSUMED;
         });
@@ -112,6 +119,13 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
         setLightStatus(!Ui.dark);
         if (sidebarWanted) root.post(() -> { if (tabletUi()) openSidebar(false); });
         LinuxEngine.listeners.add(this);
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+                && !p.getBoolean("asked_notif", false)) {
+            p.edit().putBoolean("asked_notif", true).apply();
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 401);
+        }
         Updater.autoCheck(this);
     }
 
@@ -121,18 +135,31 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
     }
 
     @Override public void onEngineChanged() {
-        reloadAll();
+        for (int i = 0; i < tabs.length; i++) {
+            if (tabs[i] == null) continue;
+            Page top = tabs[i].top();
+            if (top instanceof Pages.TerminalPage) ((Pages.TerminalPage) top).updateLogOnly();
+            else tabs[i].rebuildAll();
+        }
         if (sidebar != null) sidebar.refresh();
     }
 
     @Override public void onConfigurationChanged(Configuration c) {
         super.onConfigurationChanged(c);
         Ui.init(this, prefs(this));
-        fitHeader();
-        dock.requestLayout();
-        for (NavStack s : tabs) if (s != null) { s.applyInsets(); s.rebuildAll(); }
-        if (tabletUi() && sidebarWanted && sidebar == null) openSidebar(false);
-        else if (!tabletUi() && sidebar != null) closeSidebar();
+        root.post(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            fitHeader();
+            dock.requestLayout();
+            for (NavStack s : tabs) if (s != null) { s.applyInsets(); s.rebuildAll(); }
+            if (searchPage != null) { searchPage.applyInsets(); searchPage.rebuild(); }
+            if (tabletUi() && sidebarWanted && sidebar == null) openSidebar(false);
+            else if (!tabletUi() && sidebar != null) {
+                applySidebar(0f, Sidebar.widthFor(rootW()));
+                root.removeView(sidebar);
+                sidebar = null;
+            }
+        });
     }
 
     void setLightStatus(boolean light) {

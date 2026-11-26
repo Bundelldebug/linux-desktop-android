@@ -245,6 +245,29 @@ final class LinuxEngine {
         return DISTROS[0];
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> DISTRO_SIZES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> SIZE_SCANNING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    static long cachedDistroSize(Context c, String id) {
+        Long v = DISTRO_SIZES.get(id);
+        if (v != null) return v;
+        if (SIZE_SCANNING.add(id)) {
+            Context app = c.getApplicationContext();
+            EXEC.execute(() -> {
+                try {
+                    long sz = dirSizeBytes(rootfsDir(app, id));
+                    DISTRO_SIZES.put(id, sz);
+                    notifyChanged();
+                } finally {
+                    SIZE_SCANNING.remove(id);
+                }
+            });
+        }
+        return 0L;
+    }
+
+    static void invalidateDistroSize(String id) { DISTRO_SIZES.remove(id); }
+
     static File rootfsDir(Context c, String id) {
         return new File(c.getFilesDir(), "rootfs/" + id);
     }
@@ -571,7 +594,7 @@ final class LinuxEngine {
     /** Full POSIX/USTAR + GNU LongLink ('L'/'K') + PAX ('x') + Hardlink ('1') tar.gz extractor. */
     static int extractTarGz(File tarGz, File destDir) throws Exception {
         int count = 0;
-        Path destCanon = destDir.getCanonicalFile().toPath();
+        Path baseNorm = destDir.toPath().toAbsolutePath().normalize();
         List<String[]> deferredHardlinks = new ArrayList<>();
         String nextLongName = null, nextLongLink = null;
         long nextPaxSize = -1;
@@ -597,19 +620,25 @@ final class LinuxEngine {
                     skipTarPad(gis, size);
                     continue;
                 }
-                // PAX extended header ('x') / global header ('g')
+                // PAX extended header ('x') / global header ('g') — parse record lengths in raw UTF-8 bytes
                 if (type == 'x' || type == 'g') {
-                    String pax = readTarStringPayload(gis, size);
+                    int plen = (int) Math.min(size, 65536);
+                    byte[] pb = new byte[plen];
+                    readFully(gis, pb, plen);
+                    if (size > plen) skipFully(gis, size - plen);
                     if (type == 'x') {
                         int pos = 0;
-                        while (pos < pax.length()) {
-                            int sp = pax.indexOf(' ', pos);
-                            if (sp <= pos) break;
+                        while (pos < pb.length) {
+                            int sp = pos;
+                            while (sp < pb.length && pb[sp] != ' ') sp++;
+                            if (sp <= pos || sp >= pb.length) break;
                             int recLen;
-                            try { recLen = Integer.parseInt(pax.substring(pos, sp)); } catch (Exception e) { break; }
-                            if (recLen <= 0 || pos + recLen > pax.length()) break;
-                            String rec = pax.substring(sp + 1, pos + recLen);
-                            if (rec.endsWith("\n")) rec = rec.substring(0, rec.length() - 1);
+                            try { recLen = Integer.parseInt(new String(pb, pos, sp - pos, StandardCharsets.US_ASCII)); }
+                            catch (Exception e) { break; }
+                            if (recLen <= 0 || pos + recLen > pb.length) break;
+                            int end = pos + recLen;
+                            if (end > sp + 1 && pb[end - 1] == '\n') end--;
+                            String rec = new String(pb, sp + 1, Math.max(0, end - (sp + 1)), StandardCharsets.UTF_8);
                             int eq = rec.indexOf('=');
                             if (eq > 0) {
                                 String k = rec.substring(0, eq), v = rec.substring(eq + 1);
@@ -635,7 +664,7 @@ final class LinuxEngine {
 
                 name = stripLeadingPath(name);
                 File out = new File(destDir, name);
-                boolean safe = !name.isEmpty() && !name.contains("..") && out.getCanonicalFile().toPath().startsWith(destCanon);
+                boolean safe = !name.isEmpty() && baseNorm.resolve(name).normalize().startsWith(baseNorm);
 
                 if (safe) {
                     if (type == '5') {
@@ -859,7 +888,7 @@ final class LinuxEngine {
 
     static void stopDesktop(Context c) {
         if (runningProc != null) {
-            runningProc.destroy();
+            try { runningProc.destroyForcibly(); } catch (Throwable ignored) { try { runningProc.destroy(); } catch (Throwable ignored2) {} }
             runningProc = null;
         }
         activeDistroId = null;
@@ -897,9 +926,15 @@ final class LinuxEngine {
         });
     }
 
+    static void removeDistroAsync(Context c, Distro d) {
+        Context app = c.getApplicationContext();
+        EXEC.execute(() -> removeDistro(app, d));
+    }
+
     static void removeDistro(Context c, Distro d) {
         if (d.id.equals(activeDistroId)) stopDesktop(c);
         deleteRec(rootfsDir(c, d.id));
+        invalidateDistroSize(d.id);
         log(d.name + " 루트 파일시스템을 삭제했습니다.");
         notifyChanged();
     }
