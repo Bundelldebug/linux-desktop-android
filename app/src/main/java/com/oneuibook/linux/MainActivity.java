@@ -21,7 +21,7 @@ import java.util.List;
 
 /** 리눅스 데스크탑 — 루팅·언락 없는 PRoot 리눅스 컨테이너 + 내장 VNC 뷰어. */
 public final class MainActivity extends Activity implements Dock.Listener, Header.Listener, LinuxEngine.Listener {
-    static final String VERSION = "9.5.5";
+    static final String VERSION = "9.5.6";
 
     FrameLayout root;
     Glass.Backdrop backdrop;
@@ -247,10 +247,17 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
     @Override public void onTab(int index, boolean reselect) {
         if (searchPage != null && searchPage.getVisibility() == View.VISIBLE) onExitSearch();
         if (reselect) { tabs[tab].top().scrollToTop(); return; }
+        tabs[tab].animate().cancel();
         tabs[tab].setVisibility(View.GONE);
         tab = index;
-        tabs[tab].setVisibility(View.VISIBLE);
-        tabs[tab].top().show();
+        NavStack next = tabs[tab];
+        next.animate().cancel();
+        next.setVisibility(View.VISIBLE);
+        next.top().show();
+        next.setAlpha(0.45f);
+        next.setScaleX(0.985f);
+        next.setScaleY(0.985f);
+        next.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(Ui.EMPHASIZED).start();
         if (sidebar != null) sidebar.setSelected(tab);
         syncHeader();
     }
@@ -288,7 +295,9 @@ public final class MainActivity extends Activity implements Dock.Listener, Heade
 
     @Override public void onBackPressed() {
         if (GlassMenu.dismissAny(root)) return;
+        if (sidebar != null) { closeSidebar(); return; }
         if (searchPage != null && searchPage.getVisibility() == View.VISIBLE) { onExitSearch(); return; }
+        if (tab != 0) { dock.select(0, true); onTab(0, false); return; }
         super.onBackPressed();
     }
 
